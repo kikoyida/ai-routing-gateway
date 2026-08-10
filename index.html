@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 智能套利网关控制台</title>
+    <style>
+        /* 这里是 CSS 样式，相当于给页面做排版和上色 */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; background-color: #f4f7f6; color: #333; }
+        .container { display: flex; gap: 20px; }
+        .panel { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); flex: 1; }
+        input[type="text"] { width: 70%; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; margin-right: 10px; }
+        button { padding: 12px 24px; cursor: pointer; background: #2b3a42; color: white; border: none; border-radius: 6px; font-weight: bold; transition: 0.3s; }
+        button:hover { background: #3f5561; }
+        pre { background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 8px; overflow-x: auto; font-family: monospace; }
+        .log-item { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px dashed #eee; }
+        .tag { background: #e0f2f1; color: #00897b; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    
+    <h2>🚀 动态调度与计费网关监控台</h2>
+    
+    <div class="container">
+        <!-- 左侧：用户交互与测试区 -->
+        <div class="panel">
+            <h3>💬 接口连通性测试</h3>
+            <div style="margin-bottom: 20px;">
+                <input type="text" id="promptInput" placeholder="输入需求，例如：帮我写一段代码...">
+                <button onclick="sendRequest()">发送至网关</button>
+            </div>
+            <h4>网关实时 JSON 返回：</h4>
+            <pre id="responseArea">// 终端待命中，等待发起请求...</pre>
+        </div>
+
+        <!-- 右侧：数据库监控大盘 -->
+        <div class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3>📊 历史调度流水账单</h3>
+                <button onclick="fetchLogs()" style="background: #e67e22; padding: 8px 16px; font-size: 14px;">手动刷新</button>
+            </div>
+            <div id="logsArea" style="margin-top: 15px; max-height: 500px; overflow-y: auto;">
+                <!-- 历史记录会通过 JS 动态插入到这里 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // JS 中的 fetch 就相当于你用 C++ 代码发起网络请求
+        async function sendRequest() {
+            const prompt = document.getElementById('promptInput').value;
+            if (!prompt) return alert("输入不能为空！");
+            
+            document.getElementById('responseArea').innerText = "🔄 网关处理中...";
+
+            // 1. 把数据 POST 给你的本地 Python 服务器
+            const response = await fetch('http://127.0.0.1:8000/api/gateway', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: prompt })
+            });
+
+            // 2. 拿到后端返回的 JSON 数据
+            const data = await response.json();
+            
+            // 3. 渲染在左侧黑框里
+            document.getElementById('responseArea').innerText = JSON.stringify(data, null, 2);
+            
+            // 4. 发送完毕后，自动触发右侧账单的刷新
+            fetchLogs();
+        }
+
+        // 去后端拉取整个数据库记录的 GET 请求
+        async function fetchLogs() {
+            const response = await fetch('http://127.0.0.1:8000/api/logs');
+            const data = await response.json();
+
+            let html = '';
+            // 把最新的记录放在最前面显示
+            data.history.reverse().forEach(log => {
+                html += `
+                <div class="log-item">
+                    <span class="tag">${log.selected_model}</span>
+                    <span style="color:#e74c3c; font-weight:bold; margin-left:10px;">预估成本: $${log.cost}</span>
+                    <p style="color:#555; margin-top:8px; font-size:14px;"><b>输入请求:</b> ${log.original_prompt}</p>
+                </div>`;
+            });
+            document.getElementById('logsArea').innerHTML = html;
+        }
+
+        // 页面刚打开时，先自动拉取一次数据
+        fetchLogs();
+    </script>
+</body>
+</html>
