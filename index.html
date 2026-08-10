@@ -45,50 +45,65 @@
     </div>
 
     <script>
-        // JS 中的 fetch 就相当于你用 C++ 代码发起网络请求
-        async function sendRequest() {
-            const prompt = document.getElementById('promptInput').value;
-            if (!prompt) return alert("输入不能为空！");
-            
-            document.getElementById('responseArea').innerText = "🔄 网关处理中...";
+// 全新的流式请求逻辑
+async function sendRequest() {
+    const prompt = document.getElementById('promptInput').value;
+    if (!prompt) return alert("输入不能为空！");
+    
+    const responseArea = document.getElementById('responseArea');
+    responseArea.innerText = "🔄 正在连接云端 AI 算力网关...";
 
-            // 1. 把数据 POST 给你的本地 Python 服务器
-            const response = await fetch('http://127.0.0.1:8000/api/gateway', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: prompt })
-            });
+    try {
+        // 1. 发起请求
+        const response = await fetch('http://127.0.0.1:8000/api/gateway', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: prompt })
+        });
 
-            // 2. 拿到后端返回的 JSON 数据
-            const data = await response.json();
+        if (!response.ok) throw new Error("网关连接异常");
+
+        // 2. 从响应头里拿到后端智能路由分配的模型名字
+        const modelName = response.headers.get("X-Target-Model");
+        responseArea.innerText = `[已路由至 ${modelName} 模型节点，开始接收数据...]\n\n`;
+
+        // 3. 核心：解析流式数据
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break; // AI 说话结束
             
-            // 3. 渲染在左侧黑框里
-            document.getElementById('responseArea').innerText = JSON.stringify(data, null, 2);
-            
-            // 4. 发送完毕后，自动触发右侧账单的刷新
-            fetchLogs();
+            // 将字节流解码成文字，直接拼接到屏幕上，形成打字机效果！
+            responseArea.innerText += decoder.decode(value, {stream: true});
         }
-
-        // 去后端拉取整个数据库记录的 GET 请求
-        async function fetchLogs() {
-            const response = await fetch('http://127.0.0.1:8000/api/logs');
-            const data = await response.json();
-
-            let html = '';
-            // 把最新的记录放在最前面显示
-            data.history.reverse().forEach(log => {
-                html += `
-                <div class="log-item">
-                    <span class="tag">${log.selected_model}</span>
-                    <span style="color:#e74c3c; font-weight:bold; margin-left:10px;">预估成本: $${log.cost}</span>
-                    <p style="color:#555; margin-top:8px; font-size:14px;"><b>输入请求:</b> ${log.original_prompt}</p>
-                </div>`;
-            });
-            document.getElementById('logsArea').innerHTML = html;
-        }
-
-        // 页面刚打开时，先自动拉取一次数据
+        
+        // 4. 数据传输完毕，自动拉取数据库更新最新的一笔账单
         fetchLogs();
+        
+    } catch (error) {
+        responseArea.innerText = "请求失败: " + error;
+    }
+}
+
+// 拉取历史账单（保持不变）
+async function fetchLogs() {
+    const response = await fetch('http://127.0.0.1:8000/api/logs');
+    const data = await response.json();
+    let html = '';
+    data.history.reverse().forEach(log => {
+        html += `
+        <div class="log-item">
+            <span class="tag">${log.selected_model}</span>
+            <span style="color:#e74c3c; font-weight:bold; margin-left:10px;">预估成本: $${log.cost}</span>
+            <p style="color:#555; margin-top:8px; font-size:14px;"><b>输入请求:</b> ${log.original_prompt}</p>
+        </div>`;
+    });
+    document.getElementById('logsArea').innerHTML = html;
+}
+
+fetchLogs();
     </script>
 </body>
 </html>

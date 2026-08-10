@@ -1,8 +1,10 @@
-from fastapi import FastAPI, Depends
-from fastapi.middleware.cors import CORSMiddleware # 【新增】引入跨域通行证模块
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse # 【新增】流式响应组件
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.orm import declarative_base, sessionmaker
+from openai import OpenAI  # 【新增】OpenAI 官方工具包
 
 # ================= 数据库配置区 =================
 SQLALCHEMY_DATABASE_URL = "sqlite:///./gateway_logs.db"
@@ -20,6 +22,11 @@ class ApiLog(Base):
 
 Base.metadata.create_all(bind=engine)
 
+# ================= AI 客户端配置 =================
+# 将这里替换成你刚刚申请的 chatanywhere API Key
+API_KEY = "sk-KbO5Tcw2oiZkI8rDI9qHxvkCE5V1ghCMyGXGfElVFSogfbce" 
+client = OpenAI(api_key=API_KEY, base_url="https://api.chatanywhere.tech/v1")
+
 # ================= FastAPI 路由区 =================
 app = FastAPI()
 
@@ -29,58 +36,77 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Target-Model"] # 允许前端读取我们自定义的请求头
 )
 
 class UserInput(BaseModel):
     prompt: str
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 @app.post("/api/gateway")
-def gateway_api(data: UserInput, db: Session = Depends(get_db)):
+def gateway_api(data: UserInput):
     user_message = data.prompt
     lower_message = user_message.lower() 
     
-    # 1. 路由判断规则
-    hard_keywords = ["代码", "c++", "算法", "bug", "优化", "时间复杂度"]
+    # 1. 动态路由判断规则
+    hard_keywords = ["代码", "c++", "算法", "bug", "优化", "时间复杂度", "数组"]
     is_hard_task = any(keyword in lower_message for keyword in hard_keywords)
     
-    # 2. 模拟网关调度与 Mock 返回值
     if is_hard_task or len(user_message) > 50:
-        target_model = "deepseek-coder"
+        target_model = "gpt-4o-mini" # 使用免费的高速模型
         estimated_cost = "0.015"
-        # 【Mock 数据】伪造高级模型的硬核回复
-        ai_reply_text = f"【系统拦截】正在本地 Mock 运行。检测到硬核逻辑，若连接真实 API，{target_model} 将为您输出完整代码。"
+        # 【Prompt 提示词工程】为硬核问题注入强力设定
+        system_prompt = "你是一个拥有10年经验的 ACM 竞赛金牌得主，请用时间复杂度最优的 C++ 写法来解答用户问题，风格要极客、严谨。"
     else:
-        target_model = "deepseek-chat" 
+        target_model = "gpt-3.5-turbo"
         estimated_cost = "0.001"
-        # 【Mock 数据】伪造基础模型的闲聊回复
-        ai_reply_text = f"【系统拦截】正在本地 Mock 运行。这是简单的闲聊，{target_model} 认为您刚才说的话很有趣。"
-        
-    # 3. 将数据存入本地数据库
-    new_log = ApiLog(
-        original_prompt=user_message,
-        selected_model=target_model,
-        cost=estimated_cost,
-        ai_response=ai_reply_text 
+        system_prompt = "你是一个幽默的全栈工程师，用轻松的语气回答用户的简单闲聊，字数控制在50字以内。"
+
+    # 2. 核心：构建流式生成器
+    def generate_stream():
+        full_reply = ""
+        try:
+            # 开启 stream=True，让 AI 像打字机一样一段一段返回
+            response = client.chat.completions.create(
+                model=target_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                stream=True 
+            )
+            for chunk in response:
+                # 【修复】加一层数组长度判空，防止读取最后一个结束包时越界
+                if len(chunk.choices) > 0 and chunk.choices[0].delta.content:
+                    text = chunk.choices[0].delta.content
+                    full_reply += text
+                    yield text
+        except Exception as e:
+            error_msg = f"API调用失败: {str(e)}"
+            full_reply += error_msg
+            yield error_msg
+            
+        # 3. 流式输出全部结束后，再把拼接好的完整句子偷偷存入数据库
+        db = SessionLocal()
+        new_log = ApiLog(
+            original_prompt=user_message,
+            selected_model=target_model,
+            cost=estimated_cost,
+            ai_response=full_reply 
+        )
+        db.add(new_log)
+        db.commit()
+        db.close()
+
+    # 将数据流返回给前端，并在请求头上带上我们命中路由的模型名字
+    return StreamingResponse(
+        generate_stream(), 
+        media_type="text/plain", 
+        headers={"X-Target-Model": target_model}
     )
-    db.add(new_log)
-    db.commit()
-    db.refresh(new_log)
-    
-    # 4. 返回最终结果
-    return {
-        "status": "Success",
-        "selected_model": target_model,
-        "ai_reply": ai_reply_text 
-    }
 
 @app.get("/api/logs")
-def get_all_logs(db: Session = Depends(get_db)):
+def get_all_logs():
+    db = SessionLocal()
     logs = db.query(ApiLog).all()
+    db.close()
     return {"total_records": len(logs), "history": logs}
