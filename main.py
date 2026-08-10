@@ -64,7 +64,7 @@ def gateway_api(data: UserInput):
         "what is", "history", "principle", "concept", "explain", "difference", "why", "how to"
     ]
 
-    # 通用的语言跟随指令（大模型对这段英文指令的服从度极高）
+    # 通用的语言跟随指令
     lang_instruction = " IMPORTANT: You must reply in the exact same language as the user's prompt."
 
     # Dispatch Logic
