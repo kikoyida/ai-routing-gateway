@@ -5,6 +5,10 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import declarative_base, sessionmaker
 from openai import OpenAI  # 【新增】OpenAI 官方工具包
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ================= 数据库配置区 =================
 SQLALCHEMY_DATABASE_URL = "sqlite:///./gateway_logs.db"
@@ -23,8 +27,7 @@ class ApiLog(Base):
 Base.metadata.create_all(bind=engine)
 
 # ================= AI 客户端配置 =================
-# 将这里替换成你刚刚申请的 chatanywhere API Key
-API_KEY = "sk-KbO5Tcw2oiZkI8rDI9qHxvkCE5V1ghCMyGXGfElVFSogfbce" 
+API_KEY = os.getenv("API_KEY", "") 
 client = OpenAI(api_key=API_KEY, base_url="https://api.chatanywhere.tech/v1")
 
 # ================= FastAPI 路由区 =================
@@ -48,18 +51,28 @@ def gateway_api(data: UserInput):
     lower_message = user_message.lower() 
     
     # 1. 动态路由判断规则
-    hard_keywords = ["代码", "c++", "算法", "bug", "优化", "时间复杂度", "数组"]
+    # 扩充特征词库，精准捕获高难度算法与平台特征
+    hard_keywords = [
+        "c++", "算法", "优化", "时间复杂度", "空间复杂度", 
+        "codeforces", "luogu", "nowcoder", "dp", "贪心", 
+        "图论", "线段树", "树状数组", "二分"
+    ]
     is_hard_task = any(keyword in lower_message for keyword in hard_keywords)
     
     if is_hard_task or len(user_message) > 50:
-        target_model = "gpt-4o-mini" # 使用免费的高速模型
+        target_model = "gpt-4o-mini" # 路由至高算力模型
         estimated_cost = "0.015"
-        # 【Prompt 提示词工程】为硬核问题注入强力设定
-        system_prompt = "你是一个拥有10年经验的 ACM 竞赛金牌得主，请用时间复杂度最优的 C++ 写法来解答用户问题，风格要极客、严谨。"
+        
+        # 注入System Prompt，要求输出高质量的代码
+        system_prompt = (
+            "你是一个拥有丰富经验的 ACM 竞赛金牌教练。请完全使用 C++ 编写代码，"
+            "给出时间复杂度与空间复杂度最优的题解。代码风格需极客、严谨，"
+            "并且必须在注释中说明核心状态转移方程或算法思想，严格注意数组越界与边界条件的判断。"
+        )
     else:
-        target_model = "gpt-3.5-turbo"
+        target_model = "gpt-3.5-turbo" # 路由至低成本模型
         estimated_cost = "0.001"
-        system_prompt = "你是一个幽默的全栈工程师，用轻松的语气回答用户的简单闲聊，字数控制在50字以内。"
+        system_prompt = "你是一个效率极高的全栈工程师助手，请用简短、干练的语气回答用户的日常问题，字数尽量控制在 50 字以内。"
 
     # 2. 核心：构建流式生成器
     def generate_stream():
