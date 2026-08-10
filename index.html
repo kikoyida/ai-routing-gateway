@@ -2,108 +2,282 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>AI 智能套利网关控制台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gateway Console</title>
     <style>
-        /* 这里是 CSS 样式，相当于给页面做排版和上色 */
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; background-color: #f4f7f6; color: #333; }
-        .container { display: flex; gap: 20px; }
-        .panel { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); flex: 1; }
-        input[type="text"] { width: 70%; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; margin-right: 10px; }
-        button { padding: 12px 24px; cursor: pointer; background: #2b3a42; color: white; border: none; border-radius: 6px; font-weight: bold; transition: 0.3s; }
-        button:hover { background: #3f5561; }
-        pre { background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 8px; overflow-x: auto; font-family: monospace; }
-        .log-item { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px dashed #eee; }
-        .tag { background: #e0f2f1; color: #00897b; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        :root {
+            --bg-color: #0d1117;
+            --panel-bg: #161b22;
+            --border-color: #30363d;
+            --text-main: #c9d1d9;
+            --text-muted: #8b949e;
+            --accent: #2f81f7;
+            --accent-hover: #1f6feb;
+            --success: #238636;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .header {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header h2 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .header p {
+            margin: 8px 0 0 0;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .container {
+            display: flex;
+            gap: 30px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .panel {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            width: 50%;
+        }
+
+        .panel-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--accent);
+        }
+
+        button {
+            background-color: var(--success);
+            color: white;
+            border: none;
+            padding: 0 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #2ea043;
+        }
+
+        .btn-secondary {
+            background-color: var(--border-color);
+            color: var(--text-main);
+        }
+
+        .btn-secondary:hover {
+            background-color: #8b949e;
+        }
+
+        pre {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            padding: 16px;
+            border-radius: 6px;
+            overflow-y: auto;
+            flex: 1;
+            margin: 0;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #e6edf3;
+            white-space: pre-wrap;
+        }
+
+        .logs-area {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        /* 隐藏滚动条让界面更极简 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+
+        .log-item {
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .log-item:last-child {
+            border-bottom: none;
+        }
+
+        .log-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .tag {
+            background-color: rgba(47, 129, 247, 0.15);
+            color: var(--accent);
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-family: monospace;
+            border: 1px solid rgba(47, 129, 247, 0.4);
+        }
+
+        .cost {
+            color: var(--text-muted);
+            font-size: 12px;
+            font-family: monospace;
+        }
+
+        .log-prompt {
+            font-size: 14px;
+            color: var(--text-main);
+            margin: 0;
+        }
+
+        .blinking-cursor::after {
+            content: "▋";
+            animation: blink 1s step-end infinite;
+        }
+
+        @keyframes blink { 50% { opacity: 0; } }
     </style>
 </head>
 <body>
     
-    <h2>🚀 动态调度与计费网关监控台</h2>
+    <div class="header">
+        <h2>AI Routing Gateway</h2>
+        <p>Dynamic Model Dispatcher & Cost Auditing System</p>
+    </div>
     
     <div class="container">
-        <!-- 左侧：用户交互与测试区 -->
+        <!-- 左侧：终端调试区 -->
         <div class="panel">
-            <h3>💬 接口连通性测试</h3>
-            <div style="margin-bottom: 20px;">
-                <input type="text" id="promptInput" placeholder="输入需求，例如：帮我写一段代码...">
-                <button onclick="sendRequest()">发送至网关</button>
+            <h3 class="panel-title">Console / Debug</h3>
+            <div class="input-group">
+                <input type="text" id="promptInput" placeholder="Enter prompt to test gateway routing..." onkeydown="if(event.key==='Enter') sendRequest()">
+                <button onclick="sendRequest()">Execute</button>
             </div>
-            <h4>网关实时 JSON 返回：</h4>
-            <pre id="responseArea">// 终端待命中，等待发起请求...</pre>
+            <pre id="responseArea">// Ready. Waiting for input...</pre>
         </div>
 
         <!-- 右侧：数据库监控大盘 -->
         <div class="panel">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h3>📊 历史调度流水账单</h3>
-                <button onclick="fetchLogs()" style="background: #e67e22; padding: 8px 16px; font-size: 14px;">手动刷新</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 class="panel-title" style="margin: 0;">Traffic Logs</h3>
+                <button class="btn-secondary" onclick="fetchLogs()" style="padding: 6px 12px; font-size: 12px;">Refresh</button>
             </div>
-            <div id="logsArea" style="margin-top: 15px; max-height: 500px; overflow-y: auto;">
-                <!-- 历史记录会通过 JS 动态插入到这里 -->
+            <div class="logs-area" id="logsArea">
+                <!-- 历史记录会通过 JS 动态插入 -->
             </div>
         </div>
     </div>
 
     <script>
-// 全新的流式请求逻辑
-async function sendRequest() {
-    const prompt = document.getElementById('promptInput').value;
-    if (!prompt) return alert("输入不能为空！");
-    
-    const responseArea = document.getElementById('responseArea');
-    responseArea.innerText = "🔄 正在连接云端 AI 算力网关...";
-
-    try {
-        // 1. 发起请求
-        const response = await fetch('http://127.0.0.1:8000/api/gateway', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: prompt })
-        });
-
-        if (!response.ok) throw new Error("网关连接异常");
-
-        // 2. 从响应头里拿到后端智能路由分配的模型名字
-        const modelName = response.headers.get("X-Target-Model");
-        responseArea.innerText = `[已路由至 ${modelName} 模型节点，开始接收数据...]\n\n`;
-
-        // 3. 核心：解析流式数据
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break; // AI 说话结束
+        async function sendRequest() {
+            const prompt = document.getElementById('promptInput').value;
+            if (!prompt) return;
             
-            // 将字节流解码成文字，直接拼接到屏幕上，形成打字机效果！
-            responseArea.innerText += decoder.decode(value, {stream: true});
+            const responseArea = document.getElementById('responseArea');
+            // 去掉了表情，加上了极客风的光标闪烁动画
+            responseArea.innerHTML = "<span class='blinking-cursor'>Connecting to gateway...</span>";
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/api/gateway', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: prompt })
+                });
+
+                if (!response.ok) throw new Error("Gateway Connection Error");
+
+                const modelName = response.headers.get("X-Target-Model");
+                responseArea.innerText = `[System] Routed to ${modelName}\n[System] Receiving stream...\n\n`;
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break; 
+                    responseArea.innerText += decoder.decode(value, {stream: true});
+                }
+                
+                fetchLogs();
+                
+            } catch (error) {
+                responseArea.innerText = "[Exception] " + error;
+            }
         }
-        
-        // 4. 数据传输完毕，自动拉取数据库更新最新的一笔账单
+
+        async function fetchLogs() {
+            const response = await fetch('http://127.0.0.1:8000/api/logs');
+            const data = await response.json();
+            let html = '';
+            data.history.reverse().forEach(log => {
+                html += `
+                <div class="log-item">
+                    <div class="log-meta">
+                        <span class="tag">${log.selected_model}</span>
+                        <span class="cost">Cost: $${log.cost}</span>
+                    </div>
+                    <p class="log-prompt">${log.original_prompt}</p>
+                </div>`;
+            });
+            document.getElementById('logsArea').innerHTML = html;
+        }
+
         fetchLogs();
-        
-    } catch (error) {
-        responseArea.innerText = "请求失败: " + error;
-    }
-}
-
-// 拉取历史账单（保持不变）
-async function fetchLogs() {
-    const response = await fetch('http://127.0.0.1:8000/api/logs');
-    const data = await response.json();
-    let html = '';
-    data.history.reverse().forEach(log => {
-        html += `
-        <div class="log-item">
-            <span class="tag">${log.selected_model}</span>
-            <span style="color:#e74c3c; font-weight:bold; margin-left:10px;">预估成本: $${log.cost}</span>
-            <p style="color:#555; margin-top:8px; font-size:14px;"><b>输入请求:</b> ${log.original_prompt}</p>
-        </div>`;
-    });
-    document.getElementById('logsArea').innerHTML = html;
-}
-
-fetchLogs();
     </script>
 </body>
 </html>
