@@ -1,16 +1,16 @@
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse # 【新增】流式响应组件
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import declarative_base, sessionmaker
-from openai import OpenAI  # 【新增】OpenAI 官方工具包
+from openai import OpenAI
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# ================= 数据库配置区 =================
+# Database Configuration
 SQLALCHEMY_DATABASE_URL = "sqlite:///./gateway_logs.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -26,11 +26,11 @@ class ApiLog(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# ================= AI 客户端配置 =================
+# OpenAI Client Configuration
 API_KEY = os.getenv("API_KEY", "") 
 client = OpenAI(api_key=API_KEY, base_url="https://api.chatanywhere.tech/v1")
 
-# ================= FastAPI 路由区 =================
+# FastAPI Initialization
 app = FastAPI()
 
 app.add_middleware(
@@ -39,7 +39,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Target-Model"] # 允许前端读取我们自定义的请求头
+    expose_headers=["X-Target-Model"]
 )
 
 class UserInput(BaseModel):
@@ -50,35 +50,52 @@ def gateway_api(data: UserInput):
     user_message = data.prompt
     lower_message = user_message.lower() 
     
-    # 1. 动态路由判断规则
-    # 扩充特征词库，精准捕获高难度算法与平台特征
-    hard_keywords = [
-        "c++", "算法", "优化", "时间复杂度", "空间复杂度", 
-        "codeforces", "luogu", "nowcoder", "dp", "贪心", 
-        "图论", "线段树", "树状数组", "二分"
+    # 1. Routing Rules (支持中英双语特征词)
+    coding_keywords = [
+        "c++", "算法", "优化", "复杂度", "codeforces", "luogu", "nowcoder", "dp", "贪心", "图论", "线段树", "树状数组", "二分", "bug", "报错",
+        "algorithm", "optimize", "complexity", "error", "debug", "segment tree"
     ]
-    is_hard_task = any(keyword in lower_message for keyword in hard_keywords)
-    
-    if is_hard_task or len(user_message) > 50:
-        target_model = "gpt-4o-mini" # 路由至高算力模型
+    generation_keywords = [
+        "翻译", "总结", "润色", "文章", "邮件", "扩写", "大纲", "提取",
+        "translate", "summarize", "rewrite", "article", "email", "outline", "generate"
+    ]
+    knowledge_keywords = [
+        "什么是", "历史", "原理", "概念", "解释", "区别", "怎么理解", "为什么",
+        "what is", "history", "principle", "concept", "explain", "difference", "why", "how to"
+    ]
+
+    # 通用的语言跟随指令（大模型对这段英文指令的服从度极高）
+    lang_instruction = " IMPORTANT: You must reply in the exact same language as the user's prompt."
+
+    # Dispatch Logic
+    if any(k in lower_message for k in coding_keywords):
+        target_model = "gpt-4o-mini"
         estimated_cost = "0.015"
-        
-        # 注入System Prompt，要求输出高质量的代码
         system_prompt = (
             "你是一个拥有丰富经验的 ACM 竞赛金牌教练。请完全使用 C++ 编写代码，"
-            "给出时间复杂度与空间复杂度最优的题解。代码风格需极客、严谨，"
-            "并且必须在注释中说明核心状态转移方程或算法思想，严格注意数组越界与边界条件的判断。"
+            "给出时间复杂度与空间复杂度最优的题解。严格注意数组越界与边界条件的判断。" 
+            + lang_instruction
         )
+        
+    elif any(k in lower_message for k in generation_keywords):
+        target_model = "gpt-4o-mini"
+        estimated_cost = "0.015"
+        system_prompt = "你是一个优秀的排版与创作助手。请输出格式清晰、语言流畅的文本。" + lang_instruction
+        
+    elif any(k in lower_message for k in knowledge_keywords) or len(user_message) > 40:
+        target_model = "gpt-4o-mini"
+        estimated_cost = "0.015"
+        system_prompt = "你是一个知识渊博的百科助手。请客观、准确、简明扼要地解答用户的疑问。" + lang_instruction
+        
     else:
-        target_model = "gpt-3.5-turbo" # 路由至低成本模型
+        target_model = "gpt-3.5-turbo"
         estimated_cost = "0.001"
-        system_prompt = "你是一个效率极高的全栈工程师助手，请用简短、干练的语气回答用户的日常问题，字数尽量控制在 50 字以内。"
+        system_prompt = "你是一个友好的 AI 助手，请用简短、轻松的语气回应用户。" + lang_instruction
 
-    # 2. 核心：构建流式生成器
+    # 2. Streaming Generator
     def generate_stream():
         full_reply = ""
         try:
-            # 开启 stream=True，让 AI 像打字机一样一段一段返回
             response = client.chat.completions.create(
                 model=target_model,
                 messages=[
@@ -88,7 +105,7 @@ def gateway_api(data: UserInput):
                 stream=True 
             )
             for chunk in response:
-                # 【修复】加一层数组长度判空，防止读取最后一个结束包时越界
+                # Prevent out-of-bounds on empty chunk
                 if len(chunk.choices) > 0 and chunk.choices[0].delta.content:
                     text = chunk.choices[0].delta.content
                     full_reply += text
@@ -98,7 +115,7 @@ def gateway_api(data: UserInput):
             full_reply += error_msg
             yield error_msg
             
-        # 3. 流式输出全部结束后，再把拼接好的完整句子偷偷存入数据库
+        # 3. Persist Log
         db = SessionLocal()
         new_log = ApiLog(
             original_prompt=user_message,
@@ -110,7 +127,6 @@ def gateway_api(data: UserInput):
         db.commit()
         db.close()
 
-    # 将数据流返回给前端，并在请求头上带上我们命中路由的模型名字
     return StreamingResponse(
         generate_stream(), 
         media_type="text/plain", 
